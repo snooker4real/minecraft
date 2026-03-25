@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Minecraft 3D</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- ===== MAIN MENU ===== -->
+    <div id="menu">
+      <div id="menu-bg"></div>
+
+      <div id="logo">
+        MINECRAFT
+        <span>Edition Snooker4real</span>
+      </div>
+
+      <button class="mc-btn" id="btnPlay">
+        <span class="mc-btn-inner">▶ Jouer en Solo</span>
+      </button>
+      <button class="mc-btn" id="btnNewWorld">
+        <span class="mc-btn-inner">🌍 Nouveau Monde</span>
+      </button>
+      <button class="mc-btn" style="margin-top: 16px" id="btnOptions">
+        <span class="mc-btn-inner">⚙ Options...</span>
+      </button>
+      <button class="mc-btn danger" id="btnQuit">
+        <span class="mc-btn-inner">✕ Quitter</span>
+      </button>
+
+      <div id="menu-version">v1.0.0-js</div>
+      <div id="menu-copyright">© Minecraft JS 3D</div>
+    </div>
+
+    <!-- ===== PAUSE MENU ===== -->
+    <div id="paused">
+      <div id="paused-title">Jeu en Pause</div>
+      <div id="paused-panel">
+        <div id="controls-list">
+          <span>ZQSD / WASD</span> — Se déplacer <em>(Stick gauche)</em><br />
+          <span>Espace</span> — Sauter <em>(×)</em><br />
+          <span>Clic gauche</span> — Casser un bloc <em>(□ / L2)</em><br />
+          <span>Clic droit</span> — Placer un bloc <em>(○ / R2)</em><br />
+          <span>Molette / 1–9</span> — Changer de bloc
+          <em>(L1·R1 / D-pad ◁▷)</em><br />
+          <span>Échap</span> — Pause <em>(Options)</em><br />
+          <em style="opacity: 0.65">D-pad △▽ → difficulté · L3 → blocs · R3 → outils</em>
+        </div>
+        <button class="mc-btn" id="btnResume" style="width: 280px">
+          <span class="mc-btn-inner">▶ Reprendre le jeu</span>
+        </button>
+        <button class="mc-btn" id="btnSave" style="width: 280px; margin-top: 6px">
+          <span class="mc-btn-inner">💾 Sauvegarder</span>
+        </button>
+        <button class="mc-btn" id="btnLoad" style="width: 280px; margin-top: 6px">
+          <span class="mc-btn-inner">📂 Charger</span>
+        </button>
+        <button
+          class="mc-btn danger"
+          id="btnBackMenu"
+          style="width: 280px; margin-top: 6px"
+        >
+          <span class="mc-btn-inner">⬅ Retour au menu</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ===== DAMAGE FLASH ===== -->
+    <div id="dmg-flash"></div>
+
+    <!-- ===== DEATH SCREEN ===== -->
+    <div id="death-screen">
+      <div id="death-title">Vous êtes mort !</div>
+      <div id="death-score">Score : 0</div>
+      <button
+        class="mc-btn"
+        id="btnRespawn"
+        onclick="respawn()"
+        style="margin-top: 24px; width: 260px"
+      >
+        <span class="mc-btn-inner">↺ Réapparaître</span>
+      </button>
+      <button
+        class="mc-btn danger"
+        id="btnDeathMenu"
+        style="width: 260px; margin-top: 8px"
+        onclick="
+          document.getElementById('death-screen').style.display = 'none';
+          document.getElementById('menu').style.display = 'flex';
+        "
+      >
+        <span class="mc-btn-inner">⬅ Menu principal</span>
+      </button>
+    </div>
+
+    <!-- ===== IN-GAME HUD ===== -->
+    <div id="crosshair"></div>
+    <div id="break-bar-wrap"><div id="break-bar"></div></div>
+    <div id="hud"></div>
+
+    <!-- Health bar -->
+    <div id="hud-bottom">
+      <div id="health-bar"></div>
+    </div>
+
+    <div id="info">
+      <div id="pos">X: 0 Y: 0 Z: 0</div>
+      <div id="fps">FPS: 0</div>
+      <div id="blockInfo">Bloc: Herbe</div>
+    </div>
+
+    <!-- Difficulty HUD -->
+    <div id="difficulty-hud"></div>
+
+    <!-- Minimap -->
+    <div id="minimap-wrap">
+      <canvas id="minimap" width="128" height="128"></canvas>
+      <div id="minimap-compass">N</div>
+    </div>
+
+    <!-- ===== PICKUP NOTIFICATION ===== -->
+    <div id="pickup-notif"></div>
+
+    <!-- ===== INVENTORY SCREEN ===== -->
+    <div id="inventory-screen">
+      <div id="inventory-panel">
+        <div id="inventory-header">
+          <span id="inventory-title">Inventaire</span>
+          <span id="inv-badge"></span>
+        </div>
+        <div id="inventory-grid"></div>
+        <div id="inventory-footer">
+          <button id="inv-close-btn" class="mc-btn" style="width:180px;margin-top:12px">
+            <span class="mc-btn-inner">Fermer  [E]</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== SAVE MODAL ===== -->
+    <div id="save-modal" class="save-overlay">
+      <div class="save-dialog">
+        <div class="save-dialog-title">Sauvegarder la partie</div>
+        <input id="save-name-input" class="save-name-field" type="text"
+               placeholder="Nom de la sauvegarde" maxlength="40" />
+        <div class="save-dialog-actions">
+          <button class="mc-btn" id="save-modal-confirm" style="width:140px">
+            <span class="mc-btn-inner">💾 Sauvegarder</span>
+          </button>
+          <button class="mc-btn danger" id="save-modal-cancel" style="width:120px">
+            <span class="mc-btn-inner">Annuler</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== LOAD MODAL ===== -->
+    <div id="load-modal" class="save-overlay">
+      <div class="save-dialog" style="min-width:480px">
+        <div class="save-dialog-title">Charger une partie</div>
+        <div id="load-list" class="load-list"></div>
+        <div class="save-dialog-actions">
+          <button class="mc-btn danger" id="load-modal-close" style="width:120px">
+            <span class="mc-btn-inner">Fermer</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== SAVE TOAST ===== -->
+    <div id="save-toast"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="utils/constants.js"></script>
+    <script src="utils/textures.js"></script>
+    <script src="world.js"></script>
+    <script src="player.js"></script>
+    <script src="controls.js"></script>
+    <script src="mobs.js"></script>
+    <script src="inventory.js"></script>
+    <script src="save.js"></script>
+    <script src="game.js"></script>
+  </body>
+</html>
