@@ -267,48 +267,52 @@ function _enqueueChunk(cx, cz) {
 
 // Appelée une fois par frame depuis animate().
 // Génération INCRÉMENTALE : 2 rangées (rows) par frame → pas de freeze.
-function processNextChunk() {
-  // P1 : continuer une génération incrémentale en cours
-  if (_genState) {
-    const { cx, cz, arr, trees } = _genState;
-    const end = Math.min(_genState.lx + 2, CHUNK_SIZE); // 2 rangées / frame
-    for (let lx = _genState.lx; lx < end; lx++)
-      for (let lz = 0; lz < CHUNK_SIZE; lz++)
-        _genColumn(arr, cx, cz, lx, lz, trees);
-    _genState.lx = end;
-    if (_genState.lx >= CHUNK_SIZE) {
-      // Chunk complet : planter les arbres puis appliquer les blocs en attente
-      for (const t of trees) plantTree(arr, cx, cz, t.wx, t.wz, t.sy, t.biome);
-      const key = chunkKey(cx, cz);
-      if (pendingBlocks.has(key)) {
-        for (const {lx,ly,lz,block} of pendingBlocks.get(key))
-          if (arr[chunkIdx(lx,ly,lz)]===BLOCK.AIR) arr[chunkIdx(lx,ly,lz)]=block;
-        pendingBlocks.delete(key);
-      }
-      _meshQueue.push([cx, cz]);
-      _genState = null;
-    }
-    return;
+function applyPendingBlocks(arr, cx, cz) {
+  const key = chunkKey(cx, cz);
+  if (!pendingBlocks.has(key)) return;
+  for (const {lx,ly,lz,block} of pendingBlocks.get(key))
+    if (arr[chunkIdx(lx,ly,lz)]===BLOCK.AIR) arr[chunkIdx(lx,ly,lz)]=block;
+  pendingBlocks.delete(key);
+}
+
+// P1 : continuer une génération incrémentale en cours (2 rangées / frame)
+function advanceGeneration() {
+  const { cx, cz, arr, trees } = _genState;
+  const end = Math.min(_genState.lx + 2, CHUNK_SIZE);
+  for (let lx = _genState.lx; lx < end; lx++)
+    for (let lz = 0; lz < CHUNK_SIZE; lz++)
+      _genColumn(arr, cx, cz, lx, lz, trees);
+  _genState.lx = end;
+  if (end < CHUNK_SIZE) return;
+  // Chunk complet : planter les arbres puis appliquer les blocs en attente
+  for (const t of trees) plantTree(arr, cx, cz, t.wx, t.wz, t.sy, t.biome);
+  applyPendingBlocks(arr, cx, cz);
+  _meshQueue.push([cx, cz]);
+  _genState = null;
+}
+
+// P3 : démarrer la génération incrémentale du prochain chunk en file
+function startNextChunk() {
+  const [cx, cz] = _buildQueue.shift();
+  const key = chunkKey(cx, cz);
+  _queuedKeys.delete(key);
+  if (!chunks.has(key)) {
+    const arr = new Uint8Array(CHUNK_SIZE * WORLD_HEIGHT * CHUNK_SIZE);
+    chunks.set(key, arr);
+    _genState = { cx, cz, arr, trees: [], lx: 0 };
+  } else if (!chunkMeshGroups.has(key)) {
+    buildChunkMesh(cx, cz);
   }
-  // P2 : construire le mesh d'un chunk prêt
-  if (_meshQueue.length > 0) {
+}
+
+function processNextChunk() {
+  if (_genState) { advanceGeneration(); return; }
+  if (_meshQueue.length > 0) {  // P2 : construire le mesh d'un chunk prêt
     const [cx, cz] = _meshQueue.shift();
     buildChunkMesh(cx, cz);
     return;
   }
-  // P3 : démarrer la génération incrémentale du prochain chunk en file
-  if (_buildQueue.length > 0) {
-    const [cx, cz] = _buildQueue.shift();
-    const key = chunkKey(cx, cz);
-    _queuedKeys.delete(key);
-    if (!chunks.has(key)) {
-      const arr = new Uint8Array(CHUNK_SIZE * WORLD_HEIGHT * CHUNK_SIZE);
-      chunks.set(key, arr);
-      _genState = { cx, cz, arr, trees: [], lx: 0 };
-    } else if (!chunkMeshGroups.has(key)) {
-      buildChunkMesh(cx, cz);
-    }
-  }
+  if (_buildQueue.length > 0) startNextChunk();
 }
 
 function updateLoadedChunks(playerX,playerZ) {
