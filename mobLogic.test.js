@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { armRotationX, mobVelocity, nextMobState } from './mobLogic';
+import { armRotationX, mobVelocity, nextMobState, stepFlying, stepWalking } from './mobLogic';
 
 describe('nextMobState', () => {
   it('hostile : poursuit sous le seuil de détection, abandonne au-delà du seuil de perte', () => {
@@ -52,5 +52,68 @@ describe('armRotationX', () => {
   it('les deux bras sont en opposition de phase', () => {
     const phase = Math.PI / 2;
     expect(armRotationX('SKELETON', phase, 1)).toBeCloseTo(-armRotationX('SKELETON', phase, -1));
+  });
+});
+
+// Monde factice : sol plein à y = 0, plus des blocs ajoutés par chaque test
+const makeWorld = (extra = () => false) => ({
+  getBlock: (x, y, z) => (y < 1 || extra(x, y, z) ? 1 : 0),
+  AIR: 0, SIZE: 16, HEIGHT: 24, GRAVITY: -20,
+});
+const makeMob = (over = {}) => ({
+  pos: { x: 8, y: 1.05, z: 8 }, vel: { x: 0, y: 0, z: 0 },
+  wanderDir: { x: 1, y: 1 }, onGround: false, state: 'wander', ...over,
+});
+
+describe('stepWalking', () => {
+  it('tombe puis se pose sur le sol', () => {
+    const mob = makeMob({ pos: { x: 8, y: 5, z: 8 } });
+    for (let i = 0; i < 60; i++) stepWalking(mob, 0, 0, 0.05, makeWorld());
+    expect(mob.onGround).toBe(true);
+    expect(mob.pos.y).toBeCloseTo(1.05);
+    expect(mob.vel.y).toBe(0);
+  });
+
+  it('avance quand rien ne bloque', () => {
+    const mob = makeMob();
+    stepWalking(mob, 2, 0, 0.5, makeWorld());
+    expect(mob.pos.x).toBeCloseTo(9);
+  });
+
+  it('un bloc devant renvoie le mob dans l’autre sens', () => {
+    const mob = makeMob();
+    stepWalking(mob, 40, 0, 0.05, makeWorld((x, y) => x === 10 && y === 1));
+    expect(mob.pos.x).toBe(8);
+    expect(mob.wanderDir.x).toBe(-1);
+  });
+
+  it('en poursuite et au sol, saute par-dessus le bloc', () => {
+    const mob = makeMob({ state: 'chase', onGround: true });
+    stepWalking(mob, 0, 40, 0.05, makeWorld((x, y, z) => z === 10 && y === 1));
+    expect(mob.wanderDir.y).toBe(-1);
+    expect(mob.vel.y).toBe(5.5);
+  });
+
+  it('reste dans les limites du monde', () => {
+    const mob = makeMob({ pos: { x: 15.4, y: 1.05, z: 0.6 } });
+    stepWalking(mob, 20, -20, 1, makeWorld());
+    expect(mob.pos.x).toBe(15.5);
+    expect(mob.pos.z).toBe(0.5);
+  });
+
+  it('hors du monde, ne lit pas de bloc et continue de tomber', () => {
+    const mob = makeMob({ pos: { x: -3, y: 5, z: 8 } });
+    stepWalking(mob, 0, 0, 0.1, makeWorld());
+    expect(mob.pos.y).toBeLessThan(5);
+  });
+});
+
+describe('stepFlying', () => {
+  it('avance en XZ et rejoint la hauteur cible en douceur', () => {
+    const mob = makeMob({ pos: { x: 0, y: 0, z: 0 } });
+    stepFlying(mob, 2, -2, 0.1, 10);
+    expect(mob.pos.x).toBeCloseTo(0.2);
+    expect(mob.pos.z).toBeCloseTo(-0.2);
+    expect(mob.pos.y).toBeCloseTo(3); // 10 * 0.3
   });
 });
