@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { moveWithCollisions, stickDirection, swingPose, voxelRaycast } from './physicsLogic';
+import { blastCells, breakPercent, durabilityLook, moveWithCollisions, placementBlocked, stickDirection, swingPose, voxelRaycast } from './physicsLogic';
 
 // Générateur pseudo-aléatoire à graine fixe pour des mondes reproductibles
 const rng = seed => () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
@@ -158,5 +158,52 @@ describe('swingPose', () => {
   it('épée : balayage horizontal ; pioche : coup vers le bas', () => {
     expect(swingPose(true, 0.5)).toEqual({ rotX: -0.85, rotZ: -1.15, dropY: 0.08 });
     expect(swingPose(false, 0.5)).toEqual({ rotX: -1.55, rotZ: 0.22, dropY: 0.06 });
+  });
+});
+
+describe('breakPercent', () => {
+  it('proportionnel puis plafonné à 100', () => {
+    expect(breakPercent(0.5, 2)).toBe(25);
+    expect(breakPercent(3, 2)).toBe(100);
+  });
+});
+
+describe('placementBlocked', () => {
+  const cam = { x: 5.5, y: 10.6, z: 5.5 }; // cy = floor(10.6 - 0.8) = 9
+  it('refuse la case du joueur (pieds et tête)', () => {
+    expect(placementBlocked({ x: 5, y: 9, z: 5 }, cam, 24, 1.6)).toBe(true);
+    expect(placementBlocked({ x: 5, y: 10, z: 5 }, cam, 24, 1.6)).toBe(true);
+  });
+  it('accepte une case voisine ou plus haute', () => {
+    expect(placementBlocked({ x: 6, y: 9, z: 5 }, cam, 24, 1.6)).toBe(false);
+    expect(placementBlocked({ x: 5, y: 11, z: 5 }, cam, 24, 1.6)).toBe(false);
+  });
+  it('refuse hors du monde en hauteur', () => {
+    expect(placementBlocked({ x: 0, y: -1, z: 0 }, cam, 24, 1.6)).toBe(true);
+    expect(placementBlocked({ x: 0, y: 24, z: 0 }, cam, 24, 1.6)).toBe(true);
+  });
+});
+
+describe('durabilityLook', () => {
+  it('vert au-dessus de 50 %, orange jusqu’à 20 %, rouge en dessous', () => {
+    expect(durabilityLook(100, 100)).toEqual({ pct: 100, color: '#44ff44' });
+    expect(durabilityLook(50, 100).color).toBe('#ffaa00');
+    expect(durabilityLook(20, 100).color).toBe('#ff3333');
+    expect(durabilityLook(1, 3)).toEqual({ pct: 33, color: '#ffaa00' });
+  });
+});
+
+describe('blastCells', () => {
+  it('sphère de rayon 3 : 123 cases au milieu du monde', () => {
+    expect(blastCells({ x: 20.5, y: 10.2, z: 20.5 }, 3, 64, 24)).toHaveLength(123);
+  });
+  it('rien en dehors du monde', () => {
+    const cells = blastCells({ x: 0.5, y: 1.5, z: 0.5 }, 3, 64, 24);
+    expect(cells.every(c => c.x >= 0 && c.y >= 0 && c.z >= 0)).toBe(true);
+    expect(cells.length).toBeLessThan(123);
+  });
+  it('toutes les cases sont dans le rayon', () => {
+    for (const c of blastCells({ x: 10, y: 10, z: 10 }, 3, 64, 24))
+      expect((c.x - 10) ** 2 + (c.y - 10) ** 2 + (c.z - 10) ** 2).toBeLessThanOrEqual(9);
   });
 });
