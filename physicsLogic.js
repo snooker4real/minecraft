@@ -1,6 +1,6 @@
 // ============================================================
 //  Physics logic — voxel raycast & axis-by-axis collision (pure)
-//  Expose: voxelRaycast, moveWithCollisions
+//  Expose: voxelRaycast, moveWithCollisions, stickDirection
 // ============================================================
 
 // Parcours de grille (DDA) depuis orig dans la direction dir ; s'arrête au premier bloc
@@ -28,6 +28,15 @@ function voxelRaycast(orig, dir, reach, worldHeight, isTarget) {
     prevX = x; prevY = y; prevZ = z;
   }
   return { hit: false };
+}
+
+// Direction horizontale (normalisée) d'un stick gauche (lx droite, lz arrière) pour un cap yaw
+function stickDirection(lx, lz, yaw) {
+  const fx = -Math.sin(yaw), fz = -Math.cos(yaw);   // devant
+  const rx =  Math.cos(yaw), rz = -Math.sin(yaw);   // droite
+  const x = rx * lx - fx * lz, z = rz * lx - fz * lz;
+  const len = Math.hypot(x, z);
+  return len > 0 ? { x: x / len, z: z / len } : { x: 0, z: 0 };
 }
 
 // Déplace pos de vel*dt, un axe après l'autre ; annule la vitesse de l'axe bloqué.
@@ -64,4 +73,4 @@ function moveY(pos, vel, dt, isSolid, height, halfWidth) {
   return onGround;
 }
 
-if (typeof module !== 'undefined') module.exports = { voxelRaycast, moveWithCollisions };
+if (typeof module !== 'undefined') module.exports = { voxelRaycast, moveWithCollisions, stickDirection };

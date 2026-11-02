@@ -285,47 +285,36 @@ function applyDeadzone(v) {
 }
 
 // Reusable vectors to avoid per-frame allocations
-const _gpForward = new THREE.Vector3();
-const _gpRight   = new THREE.Vector3();
-const _gpDir     = new THREE.Vector3();
 
-function pollGamepad(dt) {
+function findGamepad() {
   const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-  let gp = null;
-  for (const g of gamepads) { if (g?.connected) { gp = g; break; } }
-  if (!gp) return;
+  for (const g of gamepads) { if (g?.connected) return g; }
+  return null;
+}
 
+function gpMove(gp) {
   const lx = applyDeadzone(gp.axes[0]);
   const lz = applyDeadzone(gp.axes[1]);
+  if (lx === 0 && lz === 0) return;
+  const dir = stickDirection(lx, lz, player.yaw);
+  player.vel.x = dir.x * PLAYER_SPEED;
+  player.vel.z = dir.z * PLAYER_SPEED;
+}
 
-  if (lx !== 0 || lz !== 0) {
-    _gpForward.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
-    _gpRight.set(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
-    _gpDir.copy(_gpRight).multiplyScalar(lx).addScaledVector(_gpForward, -lz);
-    if (_gpDir.lengthSq() > 0) _gpDir.normalize();
-    player.vel.x = _gpDir.x * PLAYER_SPEED;
-    player.vel.z = _gpDir.z * PLAYER_SPEED;
-  }
-
+function gpLook(gp) {
   const rx = applyDeadzone(gp.axes[2]);
   const ry = applyDeadzone(gp.axes[3]);
   player.yaw   -= rx * GP.LOOK_SENS;
   player.pitch  = clampPitch(player.pitch - ry * GP.LOOK_SENS);
+}
 
-  if (gp.buttons[0]?.pressed && player.onGround) {
-    player.vel.y = JUMP_FORCE;
-    player.onGround = false;
-  }
-
+function gpAttack(gp) {
   const attackPressed = gp.buttons[2]?.pressed || gp.buttons[6]?.pressed;
-  if (attackPressed) {
-    if (!breakState.active) {
-      if (!tryAttackMob()) { startBreak(); triggerSwing(); }
-    }
-  } else {
-    cancelBreak();
-  }
+  if (!attackPressed) { cancelBreak(); return; }
+  if (!breakState.active && !tryAttackMob()) { startBreak(); triggerSwing(); }
+}
 
+function gpButtons(gp) {
   if (gpPressed(gp, 1) || gpPressed(gp, 7)) tryPlaceBlock();
 
   if (gpPressed(gp, 4)) cycleHotbar(-1);
@@ -336,6 +325,20 @@ function pollGamepad(dt) {
   if (gpPressed(gp, 11)) { hotbarIndex = HOTBAR.findIndex(isTool); updateHUD(); }
   if (gpPressed(gp, 9))  togglePause();
   if (gpPressed(gp, 14)) toggleInventory(); // D-pad gauche → inventaire
+}
+
+function pollGamepad(dt) {
+  const gp = findGamepad();
+  if (!gp) return;
+
+  gpMove(gp);
+  gpLook(gp);
+  if (gp.buttons[0]?.pressed && player.onGround) {
+    player.vel.y = JUMP_FORCE;
+    player.onGround = false;
+  }
+  gpAttack(gp);
+  gpButtons(gp);
 }
 
 // ============================================================
@@ -380,21 +383,7 @@ function _gpMenuSetFocus(items) {
   if (items[gpMenu.focus]) items[gpMenu.focus].classList.add('gp-focus');
 }
 
-function pollGamepadMenu() {
-  const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-  let gp = null;
-  for (const g of gamepads) { if (g?.connected) { gp = g; break; } }
-  if (!gp) return;
-
-  const items = _gpMenuItems();
-  if (!items.length) {
-    document.querySelectorAll('.gp-focus').forEach(el => el.classList.remove('gp-focus'));
-    return;
-  }
-
-  gpMenu.focus = Math.max(0, Math.min(gpMenu.focus, items.length - 1));
-  _gpMenuSetFocus(items);
-
+function gpMenuNavigate(gp, items) {
   const now    = performance.now();
   const ly     = applyDeadzone(gp.axes[1]);
   const navUp  = gp.buttons[12]?.pressed || ly < -0.5;
@@ -405,16 +394,33 @@ function pollGamepadMenu() {
     gpMenu.focus   = (gpMenu.focus + (navDown ? 1 : -1) + items.length) % items.length;
     _gpMenuSetFocus(items);
   }
+}
+
+// ○ → ferme la fenêtre ouverte (sauvegarde, chargement) ou revient au menu depuis la pause
+function gpMenuBack() {
+  for (const id of ['save-modal', 'load-modal']) {
+    if (_elVisible(id)) { document.getElementById(id).style.display = 'none'; return; }
+  }
+  if (_elVisible('paused')) document.getElementById('btnBackMenu')?.click();
+}
+
+function pollGamepadMenu() {
+  const gp = findGamepad();
+  if (!gp) return;
+
+  const items = _gpMenuItems();
+  if (!items.length) {
+    document.querySelectorAll('.gp-focus').forEach(el => el.classList.remove('gp-focus'));
+    return;
+  }
+
+  gpMenu.focus = Math.max(0, Math.min(gpMenu.focus, items.length - 1));
+  _gpMenuSetFocus(items);
+  gpMenuNavigate(gp, items);
 
   // × → confirmer
   if (gpPressed(gp, 0)) items[gpMenu.focus]?.click();
-
-  // ○ → annuler / retour
-  if (gpPressed(gp, 1)) {
-    if (_elVisible('save-modal')) { document.getElementById('save-modal').style.display = 'none'; return; }
-    if (_elVisible('load-modal')) { document.getElementById('load-modal').style.display = 'none'; return; }
-    if (_elVisible('paused'))     { document.getElementById('btnBackMenu')?.click(); return; }
-  }
+  if (gpPressed(gp, 1)) gpMenuBack();
 
   // D-pad gauche → fermer l'inventaire si ouvert
   if (gpPressed(gp, 14) && _elVisible('inventory-screen'))
