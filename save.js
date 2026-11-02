@@ -244,10 +244,13 @@ const SaveSystem = (() => {
         const info = document.createElement('div');
         info.className = 'save-info';
         const d = new Date(s.savedAt);
-        info.innerHTML =
-          `<span class="save-name">${s.name}</span>` +
+        const nameEl = document.createElement('span');
+        nameEl.className = 'save-name';
+        nameEl.textContent = s.name;
+        info.appendChild(nameEl);
+        info.insertAdjacentHTML('beforeend',
           `<span class="save-date">${d.toLocaleDateString()} ${d.toLocaleTimeString()}</span>` +
-          `<span class="save-pos">X:${Math.round(s.x)} Y:${Math.round(s.y)} Z:${Math.round(s.z)}</span>`;
+          `<span class="save-pos">X:${Math.round(s.x)} Y:${Math.round(s.y)} Z:${Math.round(s.z)}</span>`);
 
         const btnLoad = document.createElement('button');
         btnLoad.className = 'mc-btn';
