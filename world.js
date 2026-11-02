@@ -113,13 +113,7 @@ function getSurfaceHeight(wx,wz,biome) {
   return Math.floor(SEA_LEVEL+n*(WORLD_HEIGHT-SEA_LEVEL-4));
 }
 
-function treeHash(wx,wz) { const s=Math.sin(wx*127.1+wz*311.7)*43758.5453; return s-Math.floor(s); }
-
-function shouldPlaceTree(biome,surfaceY,wx,wz) {
-  if (surfaceY<=SEA_LEVEL) return false;
-  const density=[0.025,0.095,0,0.03,0.012][biome]??0.03;
-  return density>0 && treeHash(wx,wz)<density;
-}
+const { treeHash, shouldPlaceTree, columnBlock, treeBlocks } = makeTerrain({ BLOCK, BIOME, SEA_LEVEL });
 
 // ============================================================
 //  Chunk generation
@@ -128,36 +122,7 @@ function shouldPlaceTree(biome,surfaceY,wx,wz) {
 function _genColumn(chunk,cx,cz,lx,lz,trees) {
   const wx=cx*CHUNK_SIZE+lx, wz=cz*CHUNK_SIZE+lz;
   const biome=getBiome(wx,wz), sy=getSurfaceHeight(wx,wz,biome);
-  for (let y=0;y<WORLD_HEIGHT;y++) {
-    let b=BLOCK.AIR;
-    if (y===0) b=BLOCK.STONE;
-    else if (y<sy-4) {
-      const h  = treeHash(wx*3.1+y,  wz*2.7+y);
-      const h2 = treeHash(wx*5.3+y*1.7, wz*4.1+y*2.3);
-      if      (h < 0.06)                       b = BLOCK.COAL;
-      else if (h < 0.1 && h2 < 0.45)          b = BLOCK.IRON_ORE;
-      else if (y < sy-8  && h < 0.13 && h2 < 0.35) b = BLOCK.GOLD_ORE;
-      else if (y < 5     && h < 0.14 && h2 < 0.25) b = BLOCK.DIAMOND_ORE;
-      else                                     b = BLOCK.STONE;
-    }
-    else if (y<sy-1) b=BLOCK.DIRT;
-    else if (y===sy-1) {
-      b=(biome===BIOME.DESERT)?BLOCK.SAND
-        :(biome===BIOME.TUNDRA||(biome===BIOME.MOUNTAIN&&sy>SEA_LEVEL+10))?BLOCK.STONE:BLOCK.DIRT;
-    } else if (y===sy) {
-      if (sy<=SEA_LEVEL)               b=BLOCK.SAND;
-      else if (biome===BIOME.DESERT)   b=BLOCK.SAND;
-      else if (biome===BIOME.TUNDRA)   b=BLOCK.SNOW;
-      else if (biome===BIOME.MOUNTAIN) b=sy>SEA_LEVEL+14?BLOCK.SNOW:BLOCK.GRASS;
-      else                             b=BLOCK.GRASS;
-    } else if (y===sy+1 && sy>SEA_LEVEL && !shouldPlaceTree(biome,sy,wx,wz)) {
-      const h = treeHash(wx*9.3+777, wz*6.7+333);
-      if      (h < 0.01) b = BLOCK.IRON_ORE;
-      else if (h < 0.015) b = BLOCK.GOLD_ORE;
-      else if (h < 0.018) b = BLOCK.DIAMOND_ORE;
-    } else if (y>sy && y<=SEA_LEVEL) b=BLOCK.WATER;
-    chunk[chunkIdx(lx,y,lz)]=b;
-  }
+  for (let y=0;y<WORLD_HEIGHT;y++) chunk[chunkIdx(lx,y,lz)]=columnBlock(y,sy,biome,wx,wz);
   if (shouldPlaceTree(biome,sy,wx,wz)) trees.push({wx,wz,sy:sy+1,biome});
 }
 
@@ -176,40 +141,18 @@ function generateChunk(cx,cz,chunk) {
 }
 
 function plantTree(chunk,cx,cz,wx,wz,sy,biome) {
-  function wb(bwx,bwy,bwz,block) {
-    if (bwy<0||bwy>=WORLD_HEIGHT) return;
-    const bcx=Math.floor(bwx/CHUNK_SIZE), bcz=Math.floor(bwz/CHUNK_SIZE);
-    const lx=((bwx%CHUNK_SIZE)+CHUNK_SIZE)%CHUNK_SIZE;
-    const lz=((bwz%CHUNK_SIZE)+CHUNK_SIZE)%CHUNK_SIZE;
+  for (const {x,y,z,block} of treeBlocks(wx,sy,wz,biome)) {
+    if (y<0||y>=WORLD_HEIGHT) continue;
+    const bcx=Math.floor(x/CHUNK_SIZE), bcz=Math.floor(z/CHUNK_SIZE);
+    const lx=((x%CHUNK_SIZE)+CHUNK_SIZE)%CHUNK_SIZE;
+    const lz=((z%CHUNK_SIZE)+CHUNK_SIZE)%CHUNK_SIZE;
     if (bcx===cx&&bcz===cz) {
-      if (chunk[chunkIdx(lx,bwy,lz)]===BLOCK.AIR) chunk[chunkIdx(lx,bwy,lz)]=block;
+      if (chunk[chunkIdx(lx,y,lz)]===BLOCK.AIR) chunk[chunkIdx(lx,y,lz)]=block;
     } else {
       const k=chunkKey(bcx,bcz);
       if (!pendingBlocks.has(k)) pendingBlocks.set(k,[]);
-      pendingBlocks.get(k).push({lx,ly:bwy,lz,block});
+      pendingBlocks.get(k).push({lx,ly:y,lz,block});
     }
-  }
-  if (biome===BIOME.MOUNTAIN||biome===BIOME.TUNDRA) {
-    const h=5+Math.floor(treeHash(wx+0.5,wz+0.7)*4);
-    for (let i=0;i<h;i++) wb(wx,sy+i,wz,BLOCK.WOOD);
-    for (let dy=-2;dy<=0;dy++) {
-      const r=dy<=-2?2:dy===-1?1:0;
-      for (let dx=-r;dx<=r;dx++) for (let dz=-r;dz<=r;dz++) {
-        if (Math.abs(dx)===r&&Math.abs(dz)===r) continue;
-        wb(wx+dx,sy+h+dy,wz+dz,BLOCK.LEAVES);
-      }
-    }
-    wb(wx,sy+h,wz,BLOCK.LEAVES);
-  } else {
-    const h=4+Math.floor(treeHash(wx+0.3,wz+0.9)*3);
-    for (let i=0;i<h;i++) wb(wx,sy+i,wz,BLOCK.WOOD);
-    const top=sy+h;
-    for (let dx=-2;dx<=2;dx++) for (let dz=-2;dz<=2;dz++) for (let dy=-1;dy<=1;dy++) {
-      if (Math.abs(dx)===2&&Math.abs(dz)===2) continue;
-      wb(wx+dx,top+dy,wz+dz,BLOCK.LEAVES);
-    }
-    wb(wx,top+1,wz,BLOCK.LEAVES);
-    [-1,1].forEach(d=>{wb(wx+d,top+1,wz,BLOCK.LEAVES);wb(wx,top+1,wz+d,BLOCK.LEAVES);});
   }
 }
 
