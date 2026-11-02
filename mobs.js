@@ -474,16 +474,8 @@ function updateMobs(dt) {
     const dist3D  = playerPos.distanceTo(pos);
 
     // --- AI state ---
-    if (def.hostile) {
-      const detect = DIFF_DETECTION[getDiffIdx()];
-      const lose   = DIFF_LOSE[getDiffIdx()];
-      if (distXZ < detect) mob.state = 'chase';
-      else if (distXZ > lose) mob.state = 'wander';
-    } else {
-      // passive: flee if player nearby
-      if (distXZ < 5) mob.state = 'flee';
-      else if (mob.state === 'flee' && distXZ > 9) mob.state = 'wander';
-    }
+    const idx = getDiffIdx();
+    mob.state = nextMobState(mob.state, def.hostile, distXZ, DIFF_DETECTION[idx], DIFF_LOSE[idx]);
 
     // --- Creeper fuse ---
     if (mob.type === 'CREEPER') {
@@ -515,21 +507,8 @@ function updateMobs(dt) {
       mob.wanderTimer = 2 + Math.random() * 3;
     }
 
-    let mvx = 0, mvz = 0;
     const spd = def.speed * DIFF_SPEED_MULT[getDiffIdx()];
-
-    if (mob.state === 'chase') {
-      const len = Math.max(distXZ, 0.01);
-      mvx = (dxp/len) * spd;
-      mvz = (dzp/len) * spd;
-    } else if (mob.state === 'flee') {
-      const len = Math.max(distXZ, 0.01);
-      mvx = (-dxp/len) * spd;
-      mvz = (-dzp/len) * spd;
-    } else {
-      mvx = mob.wanderDir.x * spd * 0.45;
-      mvz = mob.wanderDir.y * spd * 0.45;
-    }
+    const { x: mvx, z: mvz } = mobVelocity(mob.state, dxp, dzp, distXZ, spd, mob.wanderDir);
 
     // Face movement direction
     if (Math.abs(mvx)+Math.abs(mvz) > 0.05) {
@@ -604,9 +583,7 @@ function updateMobs(dt) {
         child.rotation.x = Math.sin(mob.animPhase + (child.userData.phase ?? 0)) * 0.55;
       }
       if (child.userData.isArm) {
-        // Zombie arms outstretched + swing
-        const swing = Math.sin(mob.animPhase + (child.userData.armSide > 0 ? Math.PI : 0)) * 0.3;
-        child.rotation.x = (mob.type === 'ZOMBIE' ? -0.7 : 0) + swing;
+        child.rotation.x = armRotationX(mob.type, mob.animPhase, child.userData.armSide);
       }
       if (child.userData.isWing) {
         child.rotation.z = child.userData.side * (0.35 + Math.sin(mob.animPhase * 2) * 0.55);
