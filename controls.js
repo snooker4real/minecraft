@@ -124,45 +124,10 @@ function raycastBlock() {
   const dir = new THREE.Vector3(0, 0, -1)
     .applyEuler(new THREE.Euler(player.pitch, player.yaw, 0, 'YXZ'))
     .normalize();
-  const orig = camera.position.clone();
-
-  let x = Math.floor(orig.x), y = Math.floor(orig.y), z = Math.floor(orig.z);
-  const stepX = dir.x >= 0 ? 1 : -1;
-  const stepY = dir.y >= 0 ? 1 : -1;
-  const stepZ = dir.z >= 0 ? 1 : -1;
-
-  const tDeltaX = dir.x !== 0 ? Math.abs(1 / dir.x) : Infinity;
-  const tDeltaY = dir.y !== 0 ? Math.abs(1 / dir.y) : Infinity;
-  const tDeltaZ = dir.z !== 0 ? Math.abs(1 / dir.z) : Infinity;
-
-  let tMaxX = dir.x !== 0 ? (stepX > 0 ? (x + 1 - orig.x) : (orig.x - x)) / Math.abs(dir.x) : Infinity;
-  let tMaxY = dir.y !== 0 ? (stepY > 0 ? (y + 1 - orig.y) : (orig.y - y)) / Math.abs(dir.y) : Infinity;
-  let tMaxZ = dir.z !== 0 ? (stepZ > 0 ? (z + 1 - orig.z) : (orig.z - z)) / Math.abs(dir.z) : Infinity;
-
-  let prevX = x, prevY = y, prevZ = z;
-  let steps = 0;
-
-  while (steps++ < 100) {
-    if (tMaxX < tMaxY) {
-      if (tMaxX < tMaxZ) { prevX = x; x += stepX; tMaxX += tDeltaX; }
-      else               { prevZ = z; z += stepZ; tMaxZ += tDeltaZ; }
-    } else {
-      if (tMaxY < tMaxZ) { prevY = y; y += stepY; tMaxY += tDeltaY; }
-      else               { prevZ = z; z += stepZ; tMaxZ += tDeltaZ; }
-    }
-
-    const t = Math.min(tMaxX, tMaxY, tMaxZ);
-    if (t > REACH) break;
-
-    if (y >= 0 && y < WORLD_HEIGHT) {
-      const b = getBlock(x, y, z);
-      if (b !== BLOCK.AIR && b !== BLOCK.WATER) {
-        return { hit: true, x, y, z, prevX, prevY, prevZ };
-      }
-    }
-    prevX = x; prevY = y; prevZ = z;
-  }
-  return { hit: false };
+  return voxelRaycast(camera.position, dir, REACH, WORLD_HEIGHT, (x, y, z) => {
+    const b = getBlock(x, y, z);
+    return b !== BLOCK.AIR && b !== BLOCK.WATER;
+  });
 }
 
 // ---- Block interaction ----
