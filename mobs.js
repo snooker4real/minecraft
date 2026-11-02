@@ -450,6 +450,58 @@ function explodeCreeper(mob) {
 // ================================================================
 //  MAIN UPDATE — called every frame from game.js
 // ================================================================
+// Returns true when the creeper blew up (the caller must drop it from this frame).
+function updateCreeperFuse(mob, dist3D, dt) {
+  if (mob.state === 'chase' && dist3D < 1.8) {
+    if (mob.fuseTimer < 0) mob.fuseTimer = 1.5; // 1.5s fuse
+    mob.fuseTimer -= dt;
+    // Flash white on fuse
+    mob.mesh.children.forEach(c => {
+      if (c.material) c.material.emissive = new THREE.Color(Math.sin(mob.fuseTimer * 20) > 0 ? 0xffffff : 0x000000);
+    });
+    if (mob.fuseTimer <= 0) { explodeCreeper(mob); return true; }
+  } else {
+    mob.fuseTimer = -1;
+    mob.mesh.children.forEach(c => { if (c.material && c.material.emissive) c.material.emissive.set(0x000000); });
+  }
+  return false;
+}
+
+function tryAttack(mob, dist3D, dt) {
+  mob.attackCooldown = Math.max(0, mob.attackCooldown - dt);
+  if (mob.def.hostile && mob.type !== 'CREEPER' && dist3D < 1.6 && mob.attackCooldown <= 0) {
+    hurtPlayer(Math.round(mob.def.dmg * DIFF_DMG_MULT[getDiffIdx()]));
+    mob.attackCooldown = DIFF_COOLDOWN[getDiffIdx()];
+  }
+}
+
+function updateWander(mob, dt) {
+  mob.wanderTimer -= dt;
+  if (mob.wanderTimer <= 0) {
+    mob.wanderDir.set(Math.random() - 0.5, Math.random() - 0.5).normalize();
+    mob.wanderTimer = 2 + Math.random() * 3;
+  }
+}
+
+function animateMob(mob, dt) {
+  mob.animPhase += dt * (mob.state === 'chase' ? 6 : 2.5);
+  mob.mesh.children.forEach(child => {
+    if (!(child instanceof THREE.Mesh)) return;
+    if (child.userData.isLeg) {
+      child.rotation.x = Math.sin(mob.animPhase + (child.userData.phase ?? 0)) * 0.55;
+    }
+    if (child.userData.isArm) {
+      child.rotation.x = armRotationX(mob.type, mob.animPhase, child.userData.armSide);
+    }
+    if (child.userData.isWing) {
+      child.rotation.z = child.userData.side * (0.35 + Math.sin(mob.animPhase * 2) * 0.55);
+    }
+  });
+}
+
+// What stepWalking needs from the world (getBlock and BLOCK are defined by world.js / constants.js)
+const MOB_WORLD = { getBlock: (x, y, z) => getBlock(x, y, z), AIR: BLOCK.AIR, SIZE: WORLD_SIZE, HEIGHT: WORLD_HEIGHT, GRAVITY };
+
 function updateMobs(dt) {
   if (playerHealth.dead) return;
 
@@ -478,34 +530,13 @@ function updateMobs(dt) {
     mob.state = nextMobState(mob.state, def.hostile, distXZ, DIFF_DETECTION[idx], DIFF_LOSE[idx]);
 
     // --- Creeper fuse ---
-    if (mob.type === 'CREEPER') {
-      if (mob.state === 'chase' && dist3D < 1.8) {
-        if (mob.fuseTimer < 0) mob.fuseTimer = 1.5; // 1.5s fuse
-        mob.fuseTimer -= dt;
-        // Flash white on fuse
-        mob.mesh.children.forEach(c => {
-          if (c.material) c.material.emissive = new THREE.Color(Math.sin(mob.fuseTimer * 20) > 0 ? 0xffffff : 0x000000);
-        });
-        if (mob.fuseTimer <= 0) { explodeCreeper(mob); continue; }
-      } else {
-        mob.fuseTimer = -1;
-        mob.mesh.children.forEach(c => { if (c.material && c.material.emissive) c.material.emissive.set(0x000000); });
-      }
-    }
+    if (mob.type === 'CREEPER' && updateCreeperFuse(mob, dist3D, dt)) continue;
 
     // --- Attack ---
-    mob.attackCooldown = Math.max(0, mob.attackCooldown - dt);
-    if (def.hostile && mob.type !== 'CREEPER' && dist3D < 1.6 && mob.attackCooldown <= 0) {
-      hurtPlayer(Math.round(def.dmg * DIFF_DMG_MULT[getDiffIdx()]));
-      mob.attackCooldown = DIFF_COOLDOWN[getDiffIdx()];
-    }
+    tryAttack(mob, dist3D, dt);
 
     // --- Movement ---
-    mob.wanderTimer -= dt;
-    if (mob.wanderTimer <= 0) {
-      mob.wanderDir.set(Math.random()-0.5, Math.random()-0.5).normalize();
-      mob.wanderTimer = 2 + Math.random() * 3;
-    }
+    updateWander(mob, dt);
 
     const spd = def.speed * DIFF_SPEED_MULT[getDiffIdx()];
     const { x: mvx, z: mvz } = mobVelocity(mob.state, dxp, dzp, distXZ, spd, mob.wanderDir);
@@ -522,73 +553,15 @@ function updateMobs(dt) {
       const targetY = (mob.state === 'chase' && dist3D < 8)
         ? playerPos.y + 1
         : getSurfaceY(Math.floor(pos.x), Math.floor(pos.z)) + 5 + Math.sin(mob.flyPhase) * 1.5;
-
-      pos.x += mvx * dt;
-      pos.z += mvz * dt;
-      pos.y += (targetY - pos.y) * Math.min(dt * 3, 1);
-
+      stepFlying(mob, mvx, mvz, dt, targetY);
     } else {
-      // Gravity
-      mob.vel.x = mvx;
-      mob.vel.z = mvz;
-      mob.vel.y += GRAVITY * dt;
-
-      // Simple ground collision
-      const bx = Math.floor(pos.x), bz2 = Math.floor(pos.z);
-      if (bx >= 0 && bx < WORLD_SIZE && bz2 >= 0 && bz2 < WORLD_SIZE) {
-        const newY = pos.y + mob.vel.y * dt;
-        const footY = newY - 0.05;
-        const by = Math.floor(footY);
-        if (mob.vel.y <= 0 && by >= 0 && by < WORLD_HEIGHT && getBlock(bx, by, bz2) !== BLOCK.AIR) {
-          mob.vel.y = 0;
-          mob.onGround = true;
-          pos.y = by + 1 + 0.05;
-        } else {
-          mob.onGround = false;
-          pos.y = newY;
-        }
-      } else {
-        pos.y += mob.vel.y * dt;
-      }
-
-      // X movement + wall jump
-      const newX = pos.x + mob.vel.x * dt;
-      const nbx = Math.floor(newX), nby = Math.floor(pos.y - 0.05);
-      if (nbx >= 0 && nbx < WORLD_SIZE && nby >= 0 && nby < WORLD_HEIGHT && getBlock(nbx, nby, Math.floor(pos.z)) !== BLOCK.AIR) {
-        mob.wanderDir.x *= -1;
-        if (mob.onGround && mob.state === 'chase') mob.vel.y = 5.5; // jump over block
-      } else pos.x = newX;
-
-      // Z movement + wall jump
-      const newZ = pos.z + mob.vel.z * dt;
-      const nbz = Math.floor(newZ), nbx2 = Math.floor(pos.x);
-      if (nbx2 >= 0 && nbx2 < WORLD_SIZE && nby >= 0 && nby < WORLD_HEIGHT && getBlock(nbx2, nby, nbz) !== BLOCK.AIR) {
-        mob.wanderDir.y *= -1;
-        if (mob.onGround && mob.state === 'chase') mob.vel.y = 5.5;
-      } else pos.z = newZ;
-
-      // Bound to world
-      pos.x = Math.max(0.5, Math.min(WORLD_SIZE - 0.5, pos.x));
-      pos.z = Math.max(0.5, Math.min(WORLD_SIZE - 0.5, pos.z));
+      stepWalking(mob, mvx, mvz, dt, MOB_WORLD);
     }
 
     // Sync mesh
     mob.mesh.position.copy(pos);
 
-    // --- Animations ---
-    mob.animPhase += dt * (mob.state === 'chase' ? 6 : 2.5);
-    mob.mesh.children.forEach(child => {
-      if (!(child instanceof THREE.Mesh)) return;
-      if (child.userData.isLeg) {
-        child.rotation.x = Math.sin(mob.animPhase + (child.userData.phase ?? 0)) * 0.55;
-      }
-      if (child.userData.isArm) {
-        child.rotation.x = armRotationX(mob.type, mob.animPhase, child.userData.armSide);
-      }
-      if (child.userData.isWing) {
-        child.rotation.z = child.userData.side * (0.35 + Math.sin(mob.animPhase * 2) * 0.55);
-      }
-    });
+    animateMob(mob, dt);
   }
 }
 
