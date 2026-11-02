@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { moveWithCollisions, stickDirection, voxelRaycast } from './physicsLogic';
+import { moveWithCollisions, stickDirection, swingPose, voxelRaycast } from './physicsLogic';
 
 // Générateur pseudo-aléatoire à graine fixe pour des mondes reproductibles
 const rng = seed => () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
@@ -144,5 +144,19 @@ describe('stickDirection', () => {
 
   it('stick au repos : direction nulle', () => {
     expect(stickDirection(0, 0, 1.2)).toEqual({ x: 0, z: 0 });
+  });
+});
+
+describe('swingPose', () => {
+  it('repos aux extrémités du coup, amplitude maximale à mi-course', () => {
+    for (const sword of [true, false]) {
+      expect(swingPose(sword, 0).rotX).toBeCloseTo(0);
+      expect(swingPose(sword, 1).dropY).toBeCloseTo(0);
+      expect(Math.abs(swingPose(sword, 0.5).rotX)).toBeGreaterThan(Math.abs(swingPose(sword, 0.2).rotX));
+    }
+  });
+  it('épée : balayage horizontal ; pioche : coup vers le bas', () => {
+    expect(swingPose(true, 0.5)).toEqual({ rotX: -0.85, rotZ: -1.15, dropY: 0.08 });
+    expect(swingPose(false, 0.5)).toEqual({ rotX: -1.55, rotZ: 0.22, dropY: 0.06 });
   });
 });
