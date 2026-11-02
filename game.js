@@ -188,51 +188,52 @@ function updateHandMesh() {
   handPivot.add(mesh);
 }
 
+function durabilityBar(item) {
+  const { pct, color } = durabilityLook(toolDurability[item], TOOL_DEFS[item].durability);
+  const wrap = document.createElement('div');
+  wrap.className = 'durability-wrap';
+  const bar = document.createElement('div');
+  bar.className = 'durability-bar';
+  bar.style.width      = pct + '%';
+  bar.style.background = color;
+  wrap.appendChild(bar);
+  return wrap;
+}
+
+function buildSlot(i) {
+  const item     = HOTBAR[i];
+  const toolSlot = isTool(item);
+  const slot     = document.createElement('div');
+  slot.className = 'hotbar-slot' + (i === hotbarIndex ? ' active' : '') + (toolSlot ? ' tool-slot' : '');
+  slot.title     = toolSlot ? (TOOL_DEFS[item]?.name ?? '') : (BLOCK_DEFS[item]?.name ?? '');
+
+  const num = document.createElement('div');
+  num.className = 'slot-num';
+  num.textContent = i < 9 ? (i + 1) : '⛏';
+  slot.appendChild(num);
+
+  const icon = document.createElement('canvas');
+  icon.className = 'block-icon';
+  icon.width = icon.height = 48;
+  if (toolSlot) drawToolIcon(icon, item);
+  else          drawBlockIcon(icon, item);
+  slot.appendChild(icon);
+
+  if (toolSlot) slot.appendChild(durabilityBar(item));
+  slot.addEventListener('click', () => { hotbarIndex = i; updateHUD(); });
+  return slot;
+}
+
 function buildHUD() {
   const hud = document.getElementById('hud');
   hud.innerHTML = '';
   for (let i = 0; i < HOTBAR.length; i++) {
-    // Séparateur visuel entre blocs et outils
-    if (i === 9) {
+    if (i === 9) {  // séparateur visuel entre blocs et outils
       const sep = document.createElement('div');
       sep.className = 'hotbar-separator';
       hud.appendChild(sep);
     }
-
-    const item     = HOTBAR[i];
-    const toolSlot = isTool(item);
-    const slot     = document.createElement('div');
-    slot.className = 'hotbar-slot' + (i === hotbarIndex ? ' active' : '') + (toolSlot ? ' tool-slot' : '');
-    slot.title     = toolSlot ? (TOOL_DEFS[item]?.name ?? '') : (BLOCK_DEFS[item]?.name ?? '');
-
-    const num = document.createElement('div');
-    num.className = 'slot-num';
-    num.textContent = i < 9 ? (i + 1) : '⛏';
-    slot.appendChild(num);
-
-    const icon = document.createElement('canvas');
-    icon.className = 'block-icon';
-    icon.width = icon.height = 48;
-    if (toolSlot) drawToolIcon(icon, item);
-    else          drawBlockIcon(icon, item);
-    slot.appendChild(icon);
-
-    // Barre de durabilité pour les outils
-    if (toolSlot) {
-      const def    = TOOL_DEFS[item];
-      const pct    = Math.round(toolDurability[item] / def.durability * 100);
-      const durWrap = document.createElement('div');
-      durWrap.className = 'durability-wrap';
-      const durBar = document.createElement('div');
-      durBar.className = 'durability-bar';
-      durBar.style.width      = pct + '%';
-      durBar.style.background = pct > 50 ? '#44ff44' : pct > 20 ? '#ffaa00' : '#ff3333';
-      durWrap.appendChild(durBar);
-      slot.appendChild(durWrap);
-    }
-
-    slot.addEventListener('click', () => { hotbarIndex = i; updateHUD(); });
-    hud.appendChild(slot);
+    hud.appendChild(buildSlot(i));
   }
 }
 
