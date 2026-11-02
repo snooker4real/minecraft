@@ -166,6 +166,22 @@ function cancelBreak() {
   elBreakBar.style.width    = '0%';
 }
 
+function finishBreak() {
+  const { x, y, z } = breakState;
+  const brokenId = getBlock(x, y, z);
+  setBlock(x, y, z, BLOCK.AIR);
+  buildBlockMesh(x, z);
+  const drop = BLOCK_DROPS[brokenId];
+  if (drop && typeof spawnDrop === 'function') spawnDrop(x, y, z, drop.id, drop.count);
+  const item = HOTBAR[hotbarIndex];
+  if (isTool(item) && toolDurability[item] > 0) {
+    toolDurability[item]--;
+    buildHUD();
+  }
+  cancelBreak();
+  lastBreak = Date.now();
+}
+
 function updateBreaking(dt) {
   if (!breakState.active || !locked) { cancelBreak(); return; }
   const r = raycastBlock();
@@ -175,26 +191,9 @@ function updateBreaking(dt) {
   breakState.progress += dt;
   if (typeof swingState !== 'undefined' && !swingState.active) triggerSwing();
 
-  const pct = Math.min(breakState.progress / breakState.duration * 100, 100);
   elBreakWrap.style.display = 'block';
-  elBreakBar.style.width    = pct + '%';
-
-  if (breakState.progress >= breakState.duration) {
-    const brokenId = getBlock(breakState.x, breakState.y, breakState.z);
-    setBlock(breakState.x, breakState.y, breakState.z, BLOCK.AIR);
-    buildBlockMesh(breakState.x, breakState.z);
-    if (typeof spawnDrop === 'function') {
-      const drop = BLOCK_DROPS[brokenId];
-      if (drop) spawnDrop(breakState.x, breakState.y, breakState.z, drop.id, drop.count);
-    }
-    const item = HOTBAR[hotbarIndex];
-    if (isTool(item) && toolDurability[item] > 0) {
-      toolDurability[item]--;
-      buildHUD();
-    }
-    cancelBreak();
-    lastBreak = Date.now();
-  }
+  elBreakBar.style.width    = breakPercent(breakState.progress, breakState.duration) + '%';
+  if (breakState.progress >= breakState.duration) finishBreak();
 }
 
 // ---- Shared action helpers ----
@@ -221,15 +220,11 @@ function tryPlaceBlock() {
   if (isTool(HOTBAR[hotbarIndex])) return;
   const r = raycastBlock();
   if (!r.hit) return;
-  const { prevX: px, prevY: py, prevZ: pz } = r;
-  if (py < 0 || py >= WORLD_HEIGHT) return;
-  const cpx = Math.floor(camera.position.x);
-  const cpy = Math.floor(camera.position.y - PLAYER_HEIGHT / 2);
-  const cpz = Math.floor(camera.position.z);
-  if (px === cpx && (py === cpy || py === cpy + 1) && pz === cpz) return;
+  const target = { x: r.prevX, y: r.prevY, z: r.prevZ };
+  if (placementBlocked(target, camera.position, WORLD_HEIGHT, PLAYER_HEIGHT)) return;
   lastPlace = now;
-  setBlock(px, py, pz, HOTBAR[hotbarIndex]);
-  buildBlockMesh(px, pz);
+  setBlock(target.x, target.y, target.z, HOTBAR[hotbarIndex]);
+  buildBlockMesh(target.x, target.z);
 }
 
 document.addEventListener('mousedown', e => {

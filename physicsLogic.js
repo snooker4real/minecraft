@@ -1,6 +1,6 @@
 // ============================================================
 //  Physics logic — voxel raycast & axis-by-axis collision (pure)
-//  Expose: voxelRaycast, moveWithCollisions, stickDirection, swingPose
+//  Expose: voxelRaycast, moveWithCollisions, stickDirection, swingPose, breakPercent, placementBlocked, durabilityLook, blastCells
 // ============================================================
 
 // Parcours de grille (DDA) depuis orig dans la direction dir ; s'arrête au premier bloc
@@ -47,6 +47,36 @@ function swingPose(isSword, p) {
     : { rotX: -arc * 1.55, rotZ:  arc * 0.22, dropY: arc * 0.06 }; // coup de pioche vers le bas-avant
 }
 
+// Avancement du cassage en pourcentage (0 à 100)
+function breakPercent(progress, duration) {
+  return Math.min(progress / duration * 100, 100);
+}
+
+// Pose interdite hors du monde ou à l'emplacement du joueur (pieds ou tête)
+function placementBlocked(t, camPos, worldHeight, playerHeight) {
+  if (t.y < 0 || t.y >= worldHeight) return true;
+  const cx = Math.floor(camPos.x), cy = Math.floor(camPos.y - playerHeight / 2), cz = Math.floor(camPos.z);
+  return t.x === cx && (t.y === cy || t.y === cy + 1) && t.z === cz;
+}
+
+// Largeur (%) et couleur de la barre de durabilité d'un outil
+function durabilityLook(current, max) {
+  const pct = Math.round(current / max * 100);
+  return { pct, color: pct > 50 ? '#44ff44' : pct > 20 ? '#ffaa00' : '#ff3333' };
+}
+
+// Cases détruites par une explosion de rayon r centrée sur pos, limitées au monde
+function blastCells(pos, r, worldSize, worldHeight) {
+  const cx = Math.floor(pos.x), cy = Math.floor(pos.y), cz = Math.floor(pos.z);
+  const cells = [];
+  for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
+    if (dx*dx + dy*dy + dz*dz > r*r) continue;
+    const x = cx + dx, y = cy + dy, z = cz + dz;
+    if (x >= 0 && x < worldSize && y >= 0 && y < worldHeight && z >= 0 && z < worldSize) cells.push({ x, y, z });
+  }
+  return cells;
+}
+
 // Déplace pos de vel*dt, un axe après l'autre ; annule la vitesse de l'axe bloqué.
 // Retourne true si le joueur est posé au sol.
 function moveWithCollisions(pos, vel, dt, isSolid, height, halfWidth) {
@@ -81,4 +111,4 @@ function moveY(pos, vel, dt, isSolid, height, halfWidth) {
   return onGround;
 }
 
-if (typeof module !== 'undefined') module.exports = { voxelRaycast, moveWithCollisions, stickDirection, swingPose };
+if (typeof module !== 'undefined') module.exports = { voxelRaycast, moveWithCollisions, stickDirection, swingPose, breakPercent, placementBlocked, durabilityLook, blastCells };

@@ -431,17 +431,9 @@ function spawnHitParticles(pos, color) {
 //  CREEPER EXPLOSION
 // ================================================================
 function explodeCreeper(mob) {
-  // Destroy blocks in radius
   const r = 3;
-  const cx = Math.floor(mob.pos.x), cy = Math.floor(mob.pos.y), cz = Math.floor(mob.pos.z);
-  for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
-    if (dx*dx + dy*dy + dz*dz > r*r) continue;
-    const bx = cx+dx, by = cy+dy, bz2 = cz+dz;
-    if (bx>=0&&bx<WORLD_SIZE&&by>=0&&by<WORLD_HEIGHT&&bz2>=0&&bz2<WORLD_SIZE)
-      setBlock(bx, by, bz2, BLOCK.AIR);
-  }
+  for (const c of blastCells(mob.pos, r, WORLD_SIZE, WORLD_HEIGHT)) setBlock(c.x, c.y, c.z, BLOCK.AIR);
   buildWorldMesh();
-  // Hurt player if close
   if (mob.pos.distanceTo(camera.position) < r + 1) hurtPlayer(8);
   spawnHitParticles(mob.pos.clone(), 0x3dae45);
   mob.alive = false;
