@@ -265,19 +265,59 @@ let frameCount = 0, lastFPS = performance.now(), fps = 0;
 // ---- Game loop ----
 let lastTime = performance.now();
 
+function updateFps(now) {
+  frameCount++;
+  if (now - lastFPS < 500) return;
+  fps = Math.round(frameCount / ((now - lastFPS) / 1000));
+  document.getElementById('fps').textContent = 'FPS: ' + fps;
+  frameCount = 0; lastFPS = now;
+}
+
+function keyboardMove() {
+  const axis = (neg, pos) => (keys[pos[0]] || keys[pos[1]] ? 1 : 0) - (keys[neg[0]] || keys[neg[1]] ? 1 : 0);
+  const dir = stickDirection(axis(['KeyA', 'ArrowLeft'], ['KeyD', 'ArrowRight']), -axis(['KeyS', 'ArrowDown'], ['KeyW', 'ArrowUp']), player.yaw);
+  player.vel.x = dir.x * PLAYER_SPEED;
+  player.vel.z = dir.z * PLAYER_SPEED;
+}
+
+function updateHighlight() {
+  const r = raycastBlock();
+  highlightMesh.visible = r.hit;
+  if (r.hit) highlightMesh.position.set(r.x + 0.5, r.y + 0.5, r.z + 0.5);
+}
+
+// Animation de l'item en main : frappe, sinon balancement au repos / à la marche
+function animateHand(now, dt) {
+  if (handPivot.children.length === 0) return;
+  const hand  = handPivot.children[0];
+  const baseY = handPivot.userData.baseY ?? -0.3;
+
+  if (swingState.active) {
+    swingState.t += dt;
+    const p = Math.min(swingState.t / swingState.duration, 1);
+    const pose = swingPose(isSword(HOTBAR[hotbarIndex]), p);
+    handPivot.rotation.x = pose.rotX;
+    handPivot.rotation.z = pose.rotZ;
+    hand.position.y = baseY - pose.dropY;
+    if (p >= 1) {
+      swingState.active   = false;
+      handPivot.rotation.x = 0;
+      handPivot.rotation.z = 0;
+    }
+    return;
+  }
+  handPivot.rotation.x = 0;
+  handPivot.rotation.z = 0;
+  const moving = Math.abs(player.vel.x) > 0.1 || Math.abs(player.vel.z) > 0.1;
+  hand.position.y = baseY + (moving ? Math.sin(now * 0.006) * 0.02 : Math.sin(now * 0.002) * 0.005);
+}
+
 function animate(now) {
   requestAnimationFrame(animate);
 
   const dt = Math.min((now - lastTime) / 1000, 0.05);
   lastTime = now;
-
-  // FPS
-  frameCount++;
-  if (now - lastFPS >= 500) {
-    fps = Math.round(frameCount / ((now - lastFPS) / 1000));
-    document.getElementById('fps').textContent = 'FPS: ' + fps;
-    frameCount = 0; lastFPS = now;
-  }
+  updateFps(now);
 
   if (!locked) {
     pollGamepadMenu();
@@ -285,104 +325,32 @@ function animate(now) {
     return;
   }
 
-  // ---- Player movement ----
-  const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
-  const right   = new THREE.Vector3( Math.cos(player.yaw), 0, -Math.sin(player.yaw));
+  keyboardMove();
+  pollGamepad(dt);     // Manette PS4
+  updateBreaking(dt);  // Cassage progressif
 
-  const moveDir = new THREE.Vector3();
-  if (keys['KeyW'] || keys['ArrowUp'])    moveDir.addScaledVector(forward, 1);
-  if (keys['KeyS'] || keys['ArrowDown'])  moveDir.addScaledVector(forward,-1);
-  if (keys['KeyA'] || keys['ArrowLeft'])  moveDir.addScaledVector(right,  -1);
-  if (keys['KeyD'] || keys['ArrowRight']) moveDir.addScaledVector(right,   1);
-  if (moveDir.lengthSq() > 0) moveDir.normalize();
-
-  player.vel.x = moveDir.x * PLAYER_SPEED;
-  player.vel.z = moveDir.z * PLAYER_SPEED;
-
-  // ---- Manette PS4 ----
-  pollGamepad(dt);
-  // ---- Cassage progressif ----
-  updateBreaking(dt);
-
-  // Gravity
   player.vel.y += GRAVITY * dt;
-
-  // Jump
   if ((keys['Space'] || keys['KeySpace']) && player.onGround) {
     player.vel.y = JUMP_FORCE;
     player.onGround = false;
   }
-
-  // Collision
   player.onGround = checkCollision(camera.position, player.vel, dt);
 
-  // ---- Camera rotation ----
   camera.rotation.order = 'YXZ';
   camera.rotation.y = player.yaw;
   camera.rotation.x = player.pitch;
 
-  // ---- Block highlight ----
-  const r = raycastBlock();
-  if (r.hit) {
-    highlightMesh.position.set(r.x + 0.5, r.y + 0.5, r.z + 0.5);
-    highlightMesh.visible = true;
-  } else {
-    highlightMesh.visible = false;
-  }
-
-  // ---- Mobs ----
+  updateHighlight();
   updateMobs(dt);
   updateDrops(dt);
-
-  // ---- Chunk streaming ----
   processNextChunk();
   updateLoadedChunks(camera.position.x, camera.position.z);
-
-  // ---- Minimap ----
   updateMinimap();
 
-  // ---- HUD position info ----
   document.getElementById('pos').textContent =
     `X: ${camera.position.x.toFixed(1)}  Y: ${camera.position.y.toFixed(1)}  Z: ${camera.position.z.toFixed(1)}`;
 
-  // ---- Animation de l'item en main ----
-  if (handPivot.children.length > 0) {
-    const hand  = handPivot.children[0];
-    const baseY = handPivot.userData.baseY ?? -0.3;
-
-    if (swingState.active) {
-      // ---- Frappe ----
-      swingState.t += dt;
-      const p   = Math.min(swingState.t / swingState.duration, 1);
-      const arc = Math.sin(p * Math.PI); // 0 → 1 → 0
-      const item = HOTBAR[hotbarIndex];
-      if (isSword(item)) {
-        // Slash horizontal : la main balaie de droite vers le centre
-        handPivot.rotation.x = -arc * 0.85;
-        handPivot.rotation.z = -arc * 1.15;
-        hand.position.y = baseY - arc * 0.08;
-      } else {
-        // Frappe pioche : coup vers le bas-avant
-        handPivot.rotation.x = -arc * 1.55;
-        handPivot.rotation.z =  arc * 0.22;
-        hand.position.y = baseY - arc * 0.06;
-      }
-      if (p >= 1) {
-        swingState.active   = false;
-        handPivot.rotation.x = 0;
-        handPivot.rotation.z = 0;
-      }
-    } else {
-      // ---- Balancement au repos / marche ----
-      handPivot.rotation.x = 0;
-      handPivot.rotation.z = 0;
-      const moving = Math.abs(player.vel.x) > 0.1 || Math.abs(player.vel.z) > 0.1;
-      hand.position.y = baseY + (moving
-        ? Math.sin(now * 0.006) * 0.02
-        : Math.sin(now * 0.002) * 0.005);
-    }
-  }
-
+  animateHand(now, dt);
   renderer.render(scene, camera);
 }
 

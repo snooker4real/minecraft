@@ -1,6 +1,6 @@
 // ============================================================
 //  Physics logic — voxel raycast & axis-by-axis collision (pure)
-//  Expose: voxelRaycast, moveWithCollisions, stickDirection
+//  Expose: voxelRaycast, moveWithCollisions, stickDirection, swingPose
 // ============================================================
 
 // Parcours de grille (DDA) depuis orig dans la direction dir ; s'arrête au premier bloc
@@ -39,6 +39,14 @@ function stickDirection(lx, lz, yaw) {
   return len > 0 ? { x: x / len, z: z / len } : { x: 0, z: 0 };
 }
 
+// Pose de la main pendant une frappe (p de 0 à 1) : rotations et descente de l'item
+function swingPose(isSword, p) {
+  const arc = Math.sin(p * Math.PI); // 0 → 1 → 0
+  return isSword
+    ? { rotX: -arc * 0.85, rotZ: -arc * 1.15, dropY: arc * 0.08 }  // slash horizontal
+    : { rotX: -arc * 1.55, rotZ:  arc * 0.22, dropY: arc * 0.06 }; // coup de pioche vers le bas-avant
+}
+
 // Déplace pos de vel*dt, un axe après l'autre ; annule la vitesse de l'axe bloqué.
 // Retourne true si le joueur est posé au sol.
 function moveWithCollisions(pos, vel, dt, isSolid, height, halfWidth) {
@@ -73,4 +81,4 @@ function moveY(pos, vel, dt, isSolid, height, halfWidth) {
   return onGround;
 }
 
-if (typeof module !== 'undefined') module.exports = { voxelRaycast, moveWithCollisions, stickDirection };
+if (typeof module !== 'undefined') module.exports = { voxelRaycast, moveWithCollisions, stickDirection, swingPose };
