@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { moveWithCollisions, voxelRaycast } from './physicsLogic';
+import { moveWithCollisions, stickDirection, voxelRaycast } from './physicsLogic';
 
 // Générateur pseudo-aléatoire à graine fixe pour des mondes reproductibles
 const rng = seed => () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
@@ -113,5 +113,36 @@ describe('moveWithCollisions', () => {
     moveWithCollisions(pos, vel, 0.1, isSolid, H, PW);
     expect(vel.x).toBe(0);
     expect(pos.x).toBe(1.6);
+  });
+});
+
+describe('stickDirection', () => {
+  // Ancienne version : right*lx + forward*(-lz), normalisée
+  const ref = (lx, lz, yaw) => {
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
+    let x = rx * lx + fx * -lz, z = rz * lx + fz * -lz;
+    const l = Math.hypot(x, z);
+    if (l > 0) { x /= l; z /= l; }
+    return { x, z };
+  };
+
+  it('même résultat que l’ancien calcul', () => {
+    const r = rng(3);
+    for (let i = 0; i < 500; i++) {
+      const lx = r() * 2 - 1, lz = r() * 2 - 1, yaw = r() * 12 - 6;
+      const a = stickDirection(lx, lz, yaw), b = ref(lx, lz, yaw);
+      expect(a.x).toBeCloseTo(b.x, 10);
+      expect(a.z).toBeCloseTo(b.z, 10);
+    }
+  });
+
+  it('stick vers l’avant avec yaw 0 : on avance vers -z', () => {
+    const d = stickDirection(0, -1, 0);
+    expect(d.x).toBeCloseTo(0);
+    expect(d.z).toBeCloseTo(-1);
+  });
+
+  it('stick au repos : direction nulle', () => {
+    expect(stickDirection(0, 0, 1.2)).toEqual({ x: 0, z: 0 });
   });
 });
